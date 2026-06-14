@@ -191,6 +191,10 @@ Below is an ASCII art diagram of the agent's control and data flow.
 └──────────────────────┘
 ```
 
+Data flow:  
+- `search_results` → `selected_item` → `suggest_outfit` → `outfit_suggestion` → `create_fit_card` → `fit_card`  
+- Error paths return the session early without proceeding to downstream tools.
+
 ---
 
 ## AI Tool Plan
