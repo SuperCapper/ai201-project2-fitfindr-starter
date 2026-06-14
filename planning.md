@@ -155,4 +155,10 @@ The tool prompts the LLM to generate a short, shareable caption. Example output:
 *"Just snagged this faded tour tee on Depop for $24 — the perfect grunge layer. Wearing it with my go-to baggy jeans and chunky sneakers. 💥 #thriftfind #vintagefashion"*
 
 **Final output to user:**
-The agent returns the found item (lst_006), the outfit suggestion, and the shareable fit card caption to display in the UI.
+The agent returns a session dict containing:
+- `selected_item`: the full listing dict for lst_006
+- `outfit_suggestion`: the styling text
+- `fit_card`: the caption text
+- `error`: None
+
+The Gradio interface displays the top listing, the outfit idea, and the fit card in their respective panels.
