@@ -9,6 +9,9 @@ try:
 except Exception:
     pass
 
+from unittest.mock import MagicMock
+
+import agent
 from agent import run_agent
 from utils.data_loader import get_example_wardrobe
 
@@ -87,5 +90,61 @@ def verify_state_flow():
         )
     print("\n📁 Session summary saved to session_dump.json")
 
+
+def verify_error_path():
+    """Confirm a no-results query returns early WITHOUT calling the LLM tools."""
+    query = "designer ballgown size XXS under $5"
+    wardrobe = get_example_wardrobe()
+
+    print("\n" + "=" * 60)
+    print("VERIFYING ERROR PATH (no results → early return)")
+    print("=" * 60)
+    print(f"Query: {query}\n")
+
+    # Spy on the downstream tools so we can prove they are never invoked.
+    # Plain MagicMocks (not wraps=) guarantee no real LLM call happens even if
+    # the loop were buggy and reached them — and let us assert call_count == 0.
+    orig_suggest = agent.suggest_outfit
+    orig_create = agent.create_fit_card
+    spy_suggest = MagicMock(name="suggest_outfit")
+    spy_create = MagicMock(name="create_fit_card")
+    agent.suggest_outfit = spy_suggest
+    agent.create_fit_card = spy_create
+
+    try:
+        session = run_agent(query, wardrobe)
+    finally:
+        # Always restore the real tools.
+        agent.suggest_outfit = orig_suggest
+        agent.create_fit_card = orig_create
+
+    expected = "No listings found matching your criteria. Try adjusting your search."
+
+    # 1. Error message matches the spec
+    if session["error"] == expected:
+        print(f"✅ ERROR set as expected: {session['error']}")
+    else:
+        print(f"⚠️ WARNING: unexpected error value: {session['error']!r}")
+
+    # 2. Downstream tools must NOT have been called
+    if spy_suggest.call_count == 0 and spy_create.call_count == 0:
+        print("✅ suggest_outfit and create_fit_card were NOT called (early return)")
+    else:
+        print(f"⚠️ WARNING: downstream tool(s) were called "
+              f"(suggest_outfit={spy_suggest.call_count}, create_fit_card={spy_create.call_count})")
+
+    # 3. Output fields should remain unset
+    if (session["selected_item"] is None
+            and session["outfit_suggestion"] is None
+            and session["fit_card"] is None):
+        print("✅ selected_item, outfit_suggestion, and fit_card are all None")
+    else:
+        print(f"⚠️ WARNING: output fields not all None: "
+              f"selected_item={session['selected_item']}, "
+              f"outfit_suggestion={session['outfit_suggestion']}, "
+              f"fit_card={session['fit_card']}")
+
+
 if __name__ == "__main__":
     verify_state_flow()
+    verify_error_path()

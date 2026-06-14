@@ -1135,11 +1135,47 @@ with a live `GROQ_API_KEY` and the example wardrobe:
   panel 1 showed "No listings found matching your criteria. Try adjusting your
   search."; panels 2 & 3 empty; downstream tools not called.
 
+### State-flow verification (`verify_state.py`)
+
+`verify_state.py` is a manual script that runs `run_agent` directly and inspects
+how state moves between the tools. Run with `python verify_state.py` (it makes
+live Groq calls for the happy path). It covers two paths:
+
+**Happy path** — planning.md walkthrough query
+(`"I'm looking for a vintage graphic tee under $30..."`):
+
+| Check | Meaning | Result |
+|-------|---------|--------|
+| Identity check | `search_results[0] is selected_item` — the **same dict object** flows from `search_listings` → `suggest_outfit` (no copying/hardcoding) | ✅ PASS |
+| Outfit is non-empty string | `suggest_outfit` returned valid output | ✅ PASS |
+| Fit card is non-empty string | `create_fit_card` returned valid output | ✅ PASS |
+| All three tools executed | full multi-step workflow completed | ✅ PASS |
+
+A `⚠️ WARNING` on the identity check would indicate the loop is copying the dict
+or using hardcoded values — i.e. state is not being threaded through correctly.
+
+**Error path** — no-results query (`"designer ballgown size XXS under $5"`):
+
+The script swaps `agent.suggest_outfit` / `agent.create_fit_card` for `MagicMock`
+spies before the run (then restores them), so it can assert the tools are not
+merely producing empty output but are **never called**.
+
+| Check | Result |
+|-------|--------|
+| `session["error"]` == "No listings found matching your criteria. Try adjusting your search." | ✅ PASS |
+| `suggest_outfit` / `create_fit_card` call count == 0 (early return) | ✅ PASS |
+| `selected_item`, `outfit_suggestion`, `fit_card` all `None` | ✅ PASS |
+
+This confirms the loop returns early after an empty `search_listings` result and
+does not reach the LLM tools. (The script also writes `session_dump.json`, which
+is git-ignored.)
+
 ### Status
 
 ✅ **Planning loop, handler, parsing, and the `ToolError` flow are fully tested.**
 Automated: 28/28 pytest cases pass. Manual: live end-to-end happy-path and
-no-results flows verified.
+no-results flows verified, plus `verify_state.py` confirms state identity on the
+happy path and the no-call early return on the error path.
 
 ---
 
