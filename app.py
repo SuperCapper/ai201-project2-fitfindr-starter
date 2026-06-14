@@ -32,19 +32,59 @@ def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
         A tuple of three strings:
             (listing_text, outfit_suggestion, fit_card)
         Each string maps to one of the three output panels in the UI.
-
-    TODO:
-        1. Guard against an empty query (return early with an error message).
-        2. Select the wardrobe based on wardrobe_choice.
-        3. Call run_agent() with the query and selected wardrobe.
-        4. If session["error"] is set, return the error in the first panel
-           and empty strings for the other two.
-        5. Otherwise, format session["selected_item"] into a readable listing_text
-           string and return it along with session["outfit_suggestion"] and
-           session["fit_card"].
     """
-    # TODO: implement this function
-    return "Agent not yet implemented.", "", ""
+    # Step 1: Guard against an empty query
+    if not user_query or user_query.strip() == "":
+        return (
+            "⚠️ Please enter a search query (e.g., 'vintage graphic tee under $30').",
+            "",
+            "",
+        )
+
+    # Step 2: Select the wardrobe based on wardrobe_choice
+    if wardrobe_choice == "Example wardrobe":
+        wardrobe = get_example_wardrobe()
+    else:  # "Empty wardrobe (new user)"
+        wardrobe = get_empty_wardrobe()
+
+    # Step 3: Call run_agent() with the query and selected wardrobe
+    session = run_agent(query=user_query, wardrobe=wardrobe)
+
+    # Step 4: If the agent ended early with an error, show it in the first panel
+    if session["error"] is not None:
+        return (f"⚠️ {session['error']}", "", "")
+
+    # Step 5: Format the selected item into a readable listing string
+    selected_item = session.get("selected_item")
+    if not selected_item:
+        return ("⚠️ No item was selected. Please try a different query.", "", "")
+
+    title = selected_item.get("title", "Unknown item")
+    price = selected_item.get("price", 0.0)
+    platform = selected_item.get("platform", "unknown platform")
+    condition = selected_item.get("condition", "unknown condition")
+    size = selected_item.get("size", "unknown size")
+    category = selected_item.get("category", "unknown category")
+    style_tags = ", ".join(selected_item.get("style_tags", []))
+    colors = ", ".join(selected_item.get("colors", []))
+    brand = selected_item.get("brand", "No brand listed")
+    description = selected_item.get("description", "No description available.")
+
+    listing_text = f"""📦 {title}
+💰 ${price:.2f} on {platform}
+📏 Size: {size}
+🏷️ Condition: {condition}
+🧥 Category: {category}
+🎨 Colors: {colors}
+🏷️ Tags: {style_tags}
+🏭 Brand: {brand}
+
+📝 {description}"""
+
+    outfit_suggestion = session.get("outfit_suggestion") or "No outfit suggestion available."
+    fit_card = session.get("fit_card") or "No fit card available."
+
+    return (listing_text, outfit_suggestion, fit_card)
 
 
 # ── interface ─────────────────────────────────────────────────────────────────
