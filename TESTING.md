@@ -1170,6 +1170,24 @@ This confirms the loop returns early after an empty `search_listings` result and
 does not reach the LLM tools. (The script also writes `session_dump.json`, which
 is git-ignored.)
 
+### Quick no-results check (`test_no_results.py`)
+
+`test_no_results.py` is a lightweight manual script (run `python test_no_results.py`)
+that runs the no-results query and prints the session fields. It infers that the
+LLM tools were skipped from the output fields being unset:
+
+| Field | Expected | Result |
+|-------|----------|--------|
+| `session["error"]` | "No listings found matching your criteria. Try adjusting your search." | ✅ |
+| `session["search_results"]` | `[]` | ✅ |
+| `session["selected_item"]` / `outfit_suggestion` / `fit_card` | all `None` | ✅ |
+
+This is an *indirect* check (it reads the result, not the call count); the
+*direct* proof that `suggest_outfit`/`create_fit_card` are never called lives in
+`verify_state.py` (`MagicMock` spies) and `tests/test_agent.py::test_run_agent_no_results`
+(`assert_not_called()`). It is a no-LLM run, so it is fast and deterministic.
+Note: it is a top-level script and is **not** collected by pytest (`testpaths = tests`).
+
 ### Status
 
 ✅ **Planning loop, handler, parsing, and the `ToolError` flow are fully tested.**
