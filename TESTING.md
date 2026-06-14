@@ -657,20 +657,25 @@ if not outfit or outfit.strip() == "":
 
 ---
 
-## Overall Testing Summary
+## Overall Testing Summary (interim manual snapshot — superseded)
 
-### All Tools Status
+> **Note:** This was an interim tally of the **manual, exploratory** tool runs
+> taken partway through development. It is kept for history. The authoritative,
+> automated count is **28 passing `pytest` cases** — see
+> [Final Testing Summary](#final-testing-summary--authoritative-automated-suite).
 
-| Tool | Tests Run | Tests Passed | Status |
-|------|-----------|--------------|--------|
-| search_listings | 9 | 9 | ✅ Ready |
-| suggest_outfit | 10 (3 initial + 7 comprehensive) | 10 | ✅ Ready |
-| create_fit_card | 3 | 3 | ✅ Ready |
+### All Tools Status (manual exploration)
 
-### Total Test Coverage
+| Tool | Manual runs (exploratory) | Status |
+|------|---------------------------|--------|
+| search_listings | 9 | ✅ Ready |
+| suggest_outfit | 10 (3 initial + 7 comprehensive) | ✅ Ready |
+| create_fit_card | 3 | ✅ Ready |
 
-- **Total test cases**: 22 (9 for Tool 1, 7 for Tool 2, 3 for Tool 3, 3 integration)
-- **Passed**: 22 (100%)
+### Total Manual Coverage (exploratory)
+
+- **Manual exploratory runs at this checkpoint**: 22
+- **Authoritative automated count**: 28 (see Final Testing Summary)
 - **Failed**: 0
 
 ### Key Implementation Details Verified
@@ -1003,42 +1008,58 @@ response = client.chat.completions.create(
 
 ---
 
-## Final Testing Summary - All Three Tools
+## Final Testing Summary — Authoritative Automated Suite
 
-### Updated Test Coverage
+> The per-section counts earlier in this document (e.g. "All 9 tests passed")
+> record the **manual, exploratory** runs performed while building each tool.
+> The numbers below are the **authoritative automated `pytest` count** — these
+> are the tests that run in CI via `python -m pytest`.
 
-| Tool | Tests Run | Tests Passed | Status |
-|------|-----------|--------------|--------|
-| search_listings | 9 | 9 | ✅ Ready |
-| suggest_outfit | 10 (3 initial + 7 comprehensive) | 10 | ✅ Ready |
-| create_fit_card | 10 (3 initial + 7 comprehensive) | 10 | ✅ Ready |
+### Automated Test Coverage (pytest)
 
-### Total Test Coverage (Updated)
+Command: `.venv/Scripts/python.exe -m pytest -q` → **28 passed**
 
-- **Total test cases**: 29 (9 for Tool 1, 10 for Tool 2, 10 for Tool 3)
-- **Passed**: 29 (100%)
+| File | Area | Tests |
+|------|------|-------|
+| `tests/test_tools.py` | search_listings | 5 |
+| `tests/test_tools.py` | suggest_outfit (success + `ToolError` + empty-completion) | 5 |
+| `tests/test_tools.py` | create_fit_card (success + `ToolError` + empty-completion fallback) | 5 |
+| `tests/test_agent.py` | run_agent planning loop + query parsing | 9 |
+| `tests/test_app.py` | handle_query (Gradio handler) | 4 |
+| **Total** | | **28** |
+
+- **Total automated cases**: 28
+- **Passed**: 28 (100%)
 - **Failed**: 0
 
-### Files Generated (Updated)
+### Test Files
 
-1. `test_runner.py` - Basic integration test for all three tools
-2. `test_search_listings.py` - Comprehensive unit tests for Tool 1 (9 tests)
-3. `test_suggest_outfit.py` - Comprehensive unit tests for Tool 2 (7 tests)
-4. `test_create_fit_card.py` - Comprehensive unit tests for Tool 3 (7 tests)
+| File | Scope | Collected by pytest? |
+|------|-------|----------------------|
+| `tests/test_tools.py` | Unit tests for all three tools (mocked Groq) | ✅ Yes |
+| `tests/test_agent.py` | `run_agent` integration + parsing (mocked tools) | ✅ Yes |
+| `tests/test_app.py` | `handle_query` handler (mocked `run_agent`) | ✅ Yes |
+| `test_search_listings.py`, `test_suggest_outfit.py`, `test_create_fit_card.py` | Manual print-style exploratory scripts (live LLM) | ❌ No — run by hand |
 
-### All Tools Ready for Integration
+`pytest.ini` sets `testpaths = tests`, so only the automated suite under
+`tests/` is collected; the top-level scripts are excluded (they reassign
+`sys.stdout` and call the live LLM, which is incompatible with pytest capture).
 
-✅ **search_listings**: 9/9 tests passed
-✅ **suggest_outfit**: 10/10 tests passed
-✅ **create_fit_card**: 10/10 tests passed
+### Status
 
-All three tools have been comprehensively tested and are ready for integration into agent.py for Milestone 4 (Planning Loop Implementation).
+✅ **search_listings**: 5/5 automated
+✅ **suggest_outfit**: 5/5 automated
+✅ **create_fit_card**: 5/5 automated
+✅ **run_agent**: 9/9 automated
+✅ **handle_query**: 4/4 automated
+
+All tools and the planning loop / Gradio handler are covered and green.
 
 ---
 
 **Final testing completed**: June 14, 2026  
 **Tester**: AI Development Team  
-**Approval**: ✅ Ready for Milestone 4 (Planning Loop Implementation)
+**Approval**: ✅ Milestone 4 (Planning Loop + Gradio Interface) verified — 28/28 automated tests passing
 
 ---
 
