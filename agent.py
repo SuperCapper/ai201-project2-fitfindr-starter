@@ -18,6 +18,7 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
+import re
 from tools import search_listings, suggest_outfit, create_fit_card
 
 
@@ -62,45 +63,94 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         The session dict after the interaction completes. Check session["error"]
         first — if it is not None, the interaction ended early and the other
         output fields (outfit_suggestion, fit_card) will be None.
-
-    TODO — implement this function using the planning loop you designed in planning.md:
-
-        Step 1: Initialize the session with _new_session().
-
-        Step 2: Parse the user's query to extract a description, size, and
-                max_price. You can use regex, string splitting, or ask the LLM
-                to parse it — document your choice in planning.md.
-                Store the result in session["parsed"].
-
-        Step 3: Call search_listings() with the parsed parameters.
-                Store results in session["search_results"].
-                If no results: set session["error"] to a helpful message and
-                return the session early. Do NOT proceed to suggest_outfit
-                with empty input.
-
-        Step 4: Select the item to use (e.g., the top result).
-                Store it in session["selected_item"].
-
-        Step 5: Call suggest_outfit() with the selected item and wardrobe.
-                Store the result in session["outfit_suggestion"].
-
-        Step 6: Call create_fit_card() with the outfit suggestion and selected item.
-                Store the result in session["fit_card"].
-
-        Step 7: Return the session.
-
-    Before writing code, complete the Planning Loop and State Management sections
-    of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
+    # Step 1: Initialize the session
     session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
+    
+    # Step 2: Parse the user's query to extract description, size, and max_price
+    # Use regex for parsing
+    description = query.strip()
+    size = None
+    max_price = None
+    
+    # Extract max_price (look for "$" followed by a number)
+    price_match = re.search(r'\$(\d+(?:\.\d+)?)', query)
+    if price_match:
+        max_price = float(price_match.group(1))
+        # Remove the price part from description
+        description = re.sub(r'\$(\d+(?:\.\d+)?)', '', description).strip()
+    
+    # Extract size (look for "size" followed by a word or pattern like "M", "L", "XL", "S/M", "W30 L30")
+    size_match = re.search(r'size\s*[:]?\s*([\w/]+(?:\s+[\w/]+)*)', query, re.IGNORECASE)
+    if size_match:
+        size = size_match.group(1).strip()
+        # Remove the size part from description
+        description = re.sub(r'size\s*[:]?\s*[\w/]+(?:\s+[\w/]+)*', '', description, flags=re.IGNORECASE).strip()
+    
+    # If description is empty after stripping, set a default error
+    if not description:
+        session["error"] = "Please describe what you're looking for (e.g., 'vintage tee under $30')."
+        return session
+    
+    # Store parsed parameters in session
+    session["parsed"] = {
+        "description": description,
+        "size": size,
+        "max_price": max_price
+    }
+    
+    # Step 3: Call search_listings() with the parsed parameters
+    search_results = search_listings(
+        description=description,
+        size=size,
+        max_price=max_price
+    )
+    session["search_results"] = search_results
+    
+    # If no results, set error and return early
+    if not search_results:
+        session["error"] = "No listings found matching your criteria. Try adjusting your search."
+        return session
+    
+    # Step 4: Select the top result
+    session["selected_item"] = search_results[0]
+    
+    # Step 5: Call suggest_outfit() with the selected item and wardrobe
+    outfit_suggestion = suggest_outfit(
+        new_item=session["selected_item"],
+        wardrobe=wardrobe
+    )
+    session["outfit_suggestion"] = outfit_suggestion
+    
+    # Check if suggest_outfit returned an error string
+    if "Error:" in outfit_suggestion or "Sorry, I couldn't generate" in outfit_suggestion:
+        session["error"] = "Could not generate an outfit suggestion. Please try again."
+        return session
+    
+    # Step 6: Call create_fit_card() with the outfit suggestion and selected item
+    fit_card = create_fit_card(
+        outfit=outfit_suggestion,
+        new_item=session["selected_item"]
+    )
+    session["fit_card"] = fit_card
+    
+    # Check if create_fit_card returned an error string
+    if "Could not create a fit card" in fit_card or "Could not generate a fit card" in fit_card:
+        session["error"] = "Could not create a fit card."
+        return session
+    
+    # Step 7: Return the session (error is None on success)
     return session
 
 
 # ── CLI test ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import sys
+    import io
+    # Set UTF-8 encoding for console output to handle emojis
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    
     from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
 
     print("=== Happy path: graphic tee ===\n")
