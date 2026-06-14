@@ -23,6 +23,17 @@ from utils.data_loader import load_listings
 load_dotenv()
 
 
+class ToolError(Exception):
+    """
+    Raised by a FitFindr tool when it cannot produce a usable result
+    (e.g. missing API key, LLM call failure, or an empty completion).
+
+    The planning loop catches this to set session["error"] and return early.
+    It lets the agent detect failure structurally instead of substring-matching
+    free text, which is brittle and misses cases.
+    """
+
+
 # ── Groq client ───────────────────────────────────────────────────────────────
 
 def _get_groq_client():
@@ -129,8 +140,8 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
     """
     try:
         client = _get_groq_client()
-    except (ValueError, Exception) as e:
-        return f"Error: {str(e)}"
+    except Exception as e:
+        raise ToolError("Could not initialize the Groq client.") from e
 
     # Check if wardrobe is empty
     wardrobe_items = wardrobe.get("items", [])
@@ -166,12 +177,14 @@ Be specific (e.g., "Pair it with your baggy jeans and chunky sneakers"). Keep it
             max_tokens=200,
         )
         result = response.choices[0].message.content.strip()
-        # Ensure non-empty result
+        # An empty completion is a failure — signal it structurally.
         if not result:
-            return "No outfit suggestion could be generated. Please try again."
+            raise ToolError("The LLM returned an empty outfit suggestion.")
         return result
+    except ToolError:
+        raise
     except Exception as e:
-        return f"Sorry, I couldn't generate an outfit suggestion due to an error: {str(e)}"
+        raise ToolError("The outfit-suggestion LLM call failed.") from e
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -197,12 +210,12 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     """
     # Guard against empty or whitespace-only outfit
     if not outfit or outfit.strip() == "":
-        return "Could not create a fit card because the outfit suggestion was missing."
+        raise ToolError("Cannot create a fit card: the outfit suggestion was missing.")
 
     try:
         client = _get_groq_client()
-    except (ValueError, Exception) as e:
-        return f"Error: {str(e)}"
+    except Exception as e:
+        raise ToolError("Could not initialize the Groq client.") from e
 
     # Build the prompt
     prompt = f"""You are writing an Instagram or TikTok caption for a thrifted outfit. 
@@ -227,8 +240,9 @@ Do NOT use hashtags unless they are natural (e.g., #thriftfind is fine)."""
             max_tokens=150,
         )
         result = response.choices[0].message.content.strip()
+        # An empty completion is non-fatal here: fall back to a generic caption.
         if not result:
             return "Just snagged this piece — can't wait to style it with my wardrobe!"
         return result
     except Exception as e:
-        return f"Could not generate a fit card due to an error: {str(e)}"
+        raise ToolError("The fit-card LLM call failed.") from e

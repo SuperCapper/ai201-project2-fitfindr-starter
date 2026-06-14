@@ -43,7 +43,7 @@ Given a newly found thrifted item and the user's current wardrobe, generates 1�
 A non‑empty string containing the outfit suggestions. Example: *"Pair the vintage tour tee with your baggy straight-leg jeans and chunky white sneakers. Add a black denim jacket for layering."* If the wardrobe is empty, the string might be: *"This vintage tee looks great with baggy denim, combat boots, and an oversized flannel — perfect for a grunge vibe."*
 
 **What happens if it fails or returns nothing:**
-If the LLM call fails (e.g., API error) or returns an empty/whitespace string, the planning loop catches the exception and sets `session["error"] = "Sorry, I couldn't generate an outfit suggestion. Please try again later."`, then returns early. It does not proceed to `create_fit_card`.
+If the client fails to initialize, the LLM call fails (e.g., API error), or the LLM returns an empty/whitespace string, the tool raises `ToolError`. The planning loop catches it, sets `session["error"] = "Could not generate an outfit suggestion. Please try again."`, then returns early. It does not proceed to `create_fit_card`.
 
 ---
 
@@ -60,7 +60,7 @@ Generates a short (2–4 sentence), shareable outfit caption (like an Instagram/
 A string of 2–4 sentences, never empty. Example: *"Just snagged this faded tour tee on Depop for $24 — the perfect grunge layer. Wearing it with my go-to baggy jeans and chunky sneakers. 💥 #thriftfind #vintagefashion"*
 
 **What happens if it fails or returns nothing:**
-If `outfit` is empty or whitespace, or if the LLM call fails, the planning loop sets `session["error"] = "Could not create a fit card because the outfit suggestion was missing."` and returns early. If the LLM returns an empty string, the tool catches it and returns a fallback string: *"This item would look great with your wardrobe — ask for specific outfit ideas!"*
+If `outfit` is empty or whitespace, the client fails to initialize, or the LLM call fails, the tool raises `ToolError` and the planning loop sets `session["error"] = "Could not create a fit card."` and returns early. If the LLM instead returns an empty string, the tool treats it as non-fatal and returns a fallback caption: *"Just snagged this piece — can't wait to style it with my wardrobe!"*
 
 ---
 
@@ -84,12 +84,12 @@ The planning loop follows a strict sequence of three steps, with conditional bra
    - If the list has at least one item → select `session["selected_item"] = results[0]` (the top result).  
 
 3. **Call `suggest_outfit(selected_item, wardrobe)`**.  
-   - If `suggest_outfit` returns an empty/whitespace string or raises an exception → set `session["error"] = "Could not generate an outfit suggestion. Please try again."` → **return**.  
+   - If `suggest_outfit` raises `ToolError` (client/LLM failure or empty completion) → set `session["error"] = "Could not generate an outfit suggestion. Please try again."` → **return**.  
    - Otherwise, store the string in `session["outfit_suggestion"]`.
 
 4. **Call `create_fit_card(outfit_suggestion, selected_item)`**.  
-   - If `create_fit_card` returns an empty string or raises an exception → set `session["error"] = "Could not create a fit card."` → **return**.  
-   - Otherwise, store the string in `session["fit_card"]`.
+   - If `create_fit_card` raises `ToolError` (missing outfit, client/LLM failure) → set `session["error"] = "Could not create a fit card."` → **return**.  
+   - Otherwise, store the string in `session["fit_card"]` (an empty LLM completion yields a non-fatal fallback caption, not an error).
 
 5. **Return the session dict** (with `error = None`).
 
@@ -125,13 +125,15 @@ Example flow:
 
 For each tool, describe the specific failure mode you're handling and what the agent does in response.
 
+Tools signal failure structurally by raising `ToolError` (defined in `tools.py`) rather than returning an error string; the planning loop catches it to set `session["error"]` and return early.
+
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
 | search_listings | No results match the query | Set `session["error"] = "No listings found matching your criteria. Try adjusting your search."` and return early (do not call subsequent tools). |
 | suggest_outfit | Wardrobe is empty | The tool calls the LLM with a prompt that asks for general styling advice instead of specific wardrobe pairings. The agent does **not** treat this as an error — it returns a valid styling string and continues to `create_fit_card`. |
-| suggest_outfit | LLM API call fails (e.g., network error, invalid API key) | Catch exception, set `session["error"] = "Sorry, I couldn't generate an outfit suggestion. Please try again later."`, return early. |
-| create_fit_card | `outfit` input is missing or incomplete (empty string) | Set `session["error"] = "Could not create a fit card because the outfit suggestion was missing."` and return early. |
-| create_fit_card | LLM API call fails or returns empty string | Fallback: set `session["fit_card"] = "This item would look great with your wardrobe — ask for specific outfit ideas!"` and continue (no error). |
+| suggest_outfit | Client init fails, LLM call fails (e.g., network error, invalid API key), or the LLM returns an empty completion | The tool raises `ToolError`. The loop catches it, sets `session["error"] = "Could not generate an outfit suggestion. Please try again."`, and returns early. |
+| create_fit_card | `outfit` input is missing/empty, client init fails, or the LLM call fails | The tool raises `ToolError`. The loop catches it, sets `session["error"] = "Could not create a fit card."`, and returns early. |
+| create_fit_card | LLM returns an empty completion | Non-fatal. The tool returns a generic fallback caption (`"Just snagged this piece — can't wait to style it with my wardrobe!"`) and the loop continues with `error = None`. |
 
 ---
 

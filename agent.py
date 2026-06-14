@@ -19,7 +19,7 @@ Usage (once implemented):
 """
 
 import re
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, ToolError
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -80,12 +80,20 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         # Remove the price part from description
         description = re.sub(r'\$(\d+(?:\.\d+)?)', '', description).strip()
     
-    # Extract size (look for "size" followed by a word or pattern like "M", "L", "XL", "S/M", "W30 L30")
-    size_match = re.search(r'size\s*[:]?\s*([\w/]+(?:\s+[\w/]+)*)', query, re.IGNORECASE)
+    # Extract size: the literal word "size" followed by one or more size-shaped
+    # tokens like "M", "XL", "S/M", "W30 L30", "8". Restricting the tokens to a
+    # size shape (rather than any word) keeps the capture from swallowing trailing
+    # prose, e.g. "size M cotton tee" yields "M", not "M cotton tee".
+    size_token = r'(?:[WL]\d+|[XSML]{1,3}(?:/[XSML]{1,3})?|\d{1,2})'
+    size_pattern = rf'\bsize\s*:?\s*({size_token}(?:\s+{size_token})*)'
+    size_match = re.search(size_pattern, query, re.IGNORECASE)
     if size_match:
         size = size_match.group(1).strip()
-        # Remove the size part from description
-        description = re.sub(r'size\s*[:]?\s*[\w/]+(?:\s+[\w/]+)*', '', description, flags=re.IGNORECASE).strip()
+        # Remove the matched size phrase from the description.
+        description = re.sub(
+            rf'\bsize\s*:?\s*{size_token}(?:\s+{size_token})*',
+            '', description, flags=re.IGNORECASE
+        ).strip()
     
     # If description is empty after stripping, set a default error
     if not description:
@@ -115,29 +123,31 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     # Step 4: Select the top result
     session["selected_item"] = search_results[0]
     
-    # Step 5: Call suggest_outfit() with the selected item and wardrobe
-    outfit_suggestion = suggest_outfit(
-        new_item=session["selected_item"],
-        wardrobe=wardrobe
-    )
-    session["outfit_suggestion"] = outfit_suggestion
-    
-    # Check if suggest_outfit returned an error string
-    if "Error:" in outfit_suggestion or "Sorry, I couldn't generate" in outfit_suggestion:
+    # Step 5: Call suggest_outfit() with the selected item and wardrobe.
+    # The tool raises ToolError on any failure (bad API key, LLM error, empty
+    # completion). An empty wardrobe is NOT an error — it returns valid advice.
+    try:
+        outfit_suggestion = suggest_outfit(
+            new_item=session["selected_item"],
+            wardrobe=wardrobe
+        )
+    except ToolError:
         session["error"] = "Could not generate an outfit suggestion. Please try again."
         return session
+    session["outfit_suggestion"] = outfit_suggestion
     
-    # Step 6: Call create_fit_card() with the outfit suggestion and selected item
-    fit_card = create_fit_card(
-        outfit=outfit_suggestion,
-        new_item=session["selected_item"]
-    )
-    session["fit_card"] = fit_card
-    
-    # Check if create_fit_card returned an error string
-    if "Could not create a fit card" in fit_card or "Could not generate a fit card" in fit_card:
+    # Step 6: Call create_fit_card() with the outfit suggestion and selected item.
+    # The tool raises ToolError on hard failures; an empty LLM completion is
+    # non-fatal and returns a generic fallback caption.
+    try:
+        fit_card = create_fit_card(
+            outfit=outfit_suggestion,
+            new_item=session["selected_item"]
+        )
+    except ToolError:
         session["error"] = "Could not create a fit card."
         return session
+    session["fit_card"] = fit_card
     
     # Step 7: Return the session (error is None on success)
     return session
