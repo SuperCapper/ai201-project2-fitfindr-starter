@@ -134,6 +134,9 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 Write out what a full user interaction looks like from start to finish — tool call by tool call. Use a specific example query.
 
+**What FitFindr needs to do (2–3 sentences)**
+FitFindr helps a user find a secondhand item based on a natural language query (e.g., "vintage graphic tee under $30"). It first searches the mock listings dataset using search_listings to return matching items. If a match is found, it uses suggest_outfit to generate styling ideas by combining the found item with the user's existing wardrobe, then produces a shareable caption via create_fit_card. If any tool fails (e.g., no results, empty wardrobe, or missing data), the agent returns a clear error message and stops early — it does not proceed with subsequent tools.
+
 **Example user query:** "I'm looking for a vintage graphic tee under $30. I mostly wear baggy jeans and chunky sneakers. What's out there and how would I style it?"
 
 **Step 1:**
