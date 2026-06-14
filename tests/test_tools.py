@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, ToolError
 from utils.data_loader import load_listings, get_example_wardrobe, get_empty_wardrobe
 
 
@@ -103,7 +103,7 @@ def test_suggest_outfit_with_wardrobe(mock_get_groq_client):
 
 @patch("tools._get_groq_client")
 def test_suggest_outfit_api_failure(mock_get_groq_client):
-    """Test that suggest_outfit handles API failures gracefully."""
+    """Test that suggest_outfit signals an API failure by raising ToolError."""
     # Mock the Groq client to raise an exception
     mock_get_groq_client.side_effect = Exception("API error")
 
@@ -112,29 +112,25 @@ def test_suggest_outfit_api_failure(mock_get_groq_client):
     item = listings[0]  # lst_001
     wardrobe = get_example_wardrobe()
 
-    result = suggest_outfit(item, wardrobe)
-    assert isinstance(result, str)
-    assert "Error:" in result
-    assert "API error" in result
+    with pytest.raises(ToolError):
+        suggest_outfit(item, wardrobe)
 
 
 def test_suggest_outfit_missing_groq_key():
-    """Test that suggest_outfit handles missing GROQ_API_KEY."""
+    """Test that suggest_outfit raises ToolError when GROQ_API_KEY is missing."""
     # Save the original environment and clear GROQ_API_KEY
     import os
     original_key = os.environ.get("GROQ_API_KEY")
     os.environ["GROQ_API_KEY"] = ""  # Empty
-    
+
     try:
-        # This will fail because _get_groq_client will raise ValueError
+        # _get_groq_client raises ValueError, which the tool re-raises as ToolError
         listings = load_listings()
         item = listings[0]
         wardrobe = get_example_wardrobe()
-        
-        # The function should catch the ValueError and return an error string
-        result = suggest_outfit(item, wardrobe)
-        assert isinstance(result, str)
-        assert "Error:" in result or "GROQ_API_KEY" in result
+
+        with pytest.raises(ToolError):
+            suggest_outfit(item, wardrobe)
     finally:
         # Restore the original key
         if original_key:
@@ -146,15 +142,15 @@ def test_suggest_outfit_missing_groq_key():
 # ── create_fit_card tests ─────────────────────────────────────────────────────
 
 def test_create_fit_card_empty_outfit():
-    """Test that create_fit_card returns an error message when outfit is empty."""
+    """Test that create_fit_card raises ToolError when the outfit is empty/whitespace."""
     listings = load_listings()
     item = listings[0]
-    
-    result = create_fit_card("", item)
-    assert "Could not create a fit card" in result
-    
-    result = create_fit_card("   ", item)
-    assert "Could not create a fit card" in result
+
+    with pytest.raises(ToolError):
+        create_fit_card("", item)
+
+    with pytest.raises(ToolError):
+        create_fit_card("   ", item)
 
 
 @patch("tools._get_groq_client")
@@ -180,7 +176,7 @@ def test_create_fit_card_valid(mock_get_groq_client):
 
 @patch("tools._get_groq_client")
 def test_create_fit_card_api_failure(mock_get_groq_client):
-    """Test that create_fit_card handles API failures gracefully."""
+    """Test that create_fit_card signals an API failure by raising ToolError."""
     # Mock the Groq client to raise an exception
     mock_get_groq_client.side_effect = Exception("API error")
 
@@ -188,28 +184,57 @@ def test_create_fit_card_api_failure(mock_get_groq_client):
     item = listings[0]
     outfit = "Pair with your baggy jeans and chunky sneakers."
 
-    result = create_fit_card(outfit, item)
-    assert isinstance(result, str)
-    assert "Error:" in result
-    assert "API error" in result
+    with pytest.raises(ToolError):
+        create_fit_card(outfit, item)
 
 
 def test_create_fit_card_missing_groq_key():
-    """Test that create_fit_card handles missing GROQ_API_KEY."""
+    """Test that create_fit_card raises ToolError when GROQ_API_KEY is missing."""
     import os
     original_key = os.environ.get("GROQ_API_KEY")
     os.environ["GROQ_API_KEY"] = ""  # Empty
-    
+
     try:
         listings = load_listings()
         item = listings[0]
         outfit = "Pair with your baggy jeans and chunky sneakers."
-        
-        result = create_fit_card(outfit, item)
-        assert isinstance(result, str)
-        assert "Error:" in result or "GROQ_API_KEY" in result
+
+        with pytest.raises(ToolError):
+            create_fit_card(outfit, item)
     finally:
         if original_key:
             os.environ["GROQ_API_KEY"] = original_key
         else:
             del os.environ["GROQ_API_KEY"]
+
+
+# ── empty-completion behavior (divergent by design) ────────────────────────────
+
+@patch("tools._get_groq_client")
+def test_suggest_outfit_empty_completion_raises(mock_get_groq_client):
+    """An empty LLM completion is a failure for suggest_outfit -> raises ToolError."""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content="   "))]
+    mock_client.chat.completions.create.return_value = mock_response
+    mock_get_groq_client.return_value = mock_client
+
+    item = load_listings()[0]
+    with pytest.raises(ToolError):
+        suggest_outfit(item, get_example_wardrobe())
+
+
+@patch("tools._get_groq_client")
+def test_create_fit_card_empty_completion_falls_back(mock_get_groq_client):
+    """An empty LLM completion is non-fatal for create_fit_card -> returns a fallback caption."""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content=""))]
+    mock_client.chat.completions.create.return_value = mock_response
+    mock_get_groq_client.return_value = mock_client
+
+    item = load_listings()[0]
+    result = create_fit_card("Pair with your baggy jeans and chunky sneakers.", item)
+    assert isinstance(result, str)
+    assert result.strip() != ""
+    assert "Just snagged this piece" in result

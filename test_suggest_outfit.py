@@ -115,10 +115,11 @@ if all_have_fields:
 else:
     print(f"  ✗ FAILED: Some items missing required fields")
 
-# Test 5: Exception handling fallback
-print("\n[Test 5] Exception handling - returns non-empty string on API failure")
-print("  Note: Testing with valid API key, so expecting success")
-print("  (Exception handling is in place with try/except blocks)")
+# Test 5: Exception handling
+print("\n[Test 5] Exception handling - raises ToolError on failure")
+print("  Note: Testing with valid API key, so expecting success here.")
+print("  (On client/LLM failure or an empty completion, suggest_outfit raises ToolError;")
+print("   the agent loop catches it and sets session['error'].)")
 
 try:
     # Test with valid inputs - should succeed

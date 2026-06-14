@@ -2,6 +2,17 @@
 
 This document records all testing performed on the three FitFindr tools before integration into the agent.
 
+> **Update — June 14, 2026 (post-refactor):** The failure contract changed.
+> `suggest_outfit` and `create_fit_card` now **raise `ToolError`** (defined in
+> `tools.py`) on hard failures — missing API key, client-init failure, LLM-call
+> failure, and (for `suggest_outfit`) an empty completion — instead of returning
+> an error string. An empty `create_fit_card` completion remains non-fatal and
+> returns a fallback caption. `search_listings` is unchanged (still returns `[]`
+> on no match). Sections describing returned error strings have been corrected
+> below and are marked **(updated)**. See the new
+> [Integration Testing](#integration-testing-agentpy--apppy) section for
+> `run_agent` and `handle_query` coverage.
+
 ---
 
 ## Test Environment
@@ -418,43 +429,52 @@ The function builds prompts like:
 
 ---
 
-#### Test 5: Exception Handling and Fallback
-**Objective**: Verify tool returns non-empty string even if LLM call fails
+#### Test 5: Exception Handling (updated)
+**Objective**: Verify the tool signals failure by raising `ToolError` (not by returning an error string)
 
-**Test Code**:
+**Test Code** (`tests/test_tools.py`):
 ```python
-try:
-    result = suggest_outfit(test_item, empty_wardrobe)
-    # Check for error indicators in output
-    error_indicators = ["error:", "sorry", "could not", "couldn't"]
-    has_error = any(ind in result.lower() for ind in error_indicators)
-except Exception as e:
-    # Should not reach here - exceptions should be caught
+@patch("tools._get_groq_client")
+def test_suggest_outfit_api_failure(mock_get_groq_client):
+    mock_get_groq_client.side_effect = Exception("API error")
+    with pytest.raises(ToolError):
+        suggest_outfit(item, get_example_wardrobe())
+
+@patch("tools._get_groq_client")
+def test_suggest_outfit_empty_completion_raises(mock_get_groq_client):
+    # LLM returns whitespace -> treated as failure
+    ...
+    with pytest.raises(ToolError):
+        suggest_outfit(item, get_example_wardrobe())
 ```
 
 **Result**: ✅ PASS
-- Returned non-empty string: 374 characters
-- Success response (not an error fallback)
-- No unhandled exceptions raised
+- Client-init failure, LLM-call failure, and empty completion all raise `ToolError`
+- No error strings are returned for these cases anymore
 
 **Code Verification**:
 ```python
 try:
-    response = client.chat.completions.create(...)
-    result = response.choices[0].message.content.strip()
-    if not result:
-        return "No outfit suggestion could be generated. Please try again."
-    return result
+    client = _get_groq_client()
 except Exception as e:
-    return f"Sorry, I couldn't generate an outfit suggestion due to an error: {str(e)}"
+    raise ToolError("Could not initialize the Groq client.") from e
+...
+result = response.choices[0].message.content.strip()
+if not result:
+    raise ToolError("The LLM returned an empty outfit suggestion.")
+return result
+except ToolError:
+    raise
+except Exception as e:
+    raise ToolError("The outfit-suggestion LLM call failed.") from e
 ```
 
-**Fallback Messages Confirmed**:
-1. Empty result: "No outfit suggestion could be generated. Please try again."
-2. API error: "Sorry, I couldn't generate an outfit suggestion due to an error: {error}"
-3. Missing API key: "Error: GROQ_API_KEY not set. Add it to a .env file in the project root."
+**Failure behavior confirmed** (all raise `ToolError`):
+1. Empty completion
+2. LLM API call failure
+3. Missing API key / client-init failure
 
-**Conclusion**: Exception handling is comprehensive; always returns non-empty string.
+**Conclusion**: Failures are signaled structurally via `ToolError`; the agent loop catches it and sets `session["error"]`.
 
 ---
 
@@ -525,18 +545,18 @@ response = client.chat.completions.create(
 - Empty wardrobe: Asks for general outfit ideas with common clothing categories
 - Non-empty wardrobe: Includes detailed item descriptions (name, category, colors, tags)
 
-**Error Handling Coverage**:
-- ✅ Missing API key
-- ✅ API call failures
-- ✅ Empty LLM responses
-- ✅ No unhandled exceptions
+**Error Handling Coverage** (updated — all failures raise `ToolError`):
+- ✅ Missing API key / client-init failure → raises `ToolError`
+- ✅ API call failures → raises `ToolError`
+- ✅ Empty LLM responses → raises `ToolError`
+- ✅ No unhandled non-`ToolError` exceptions escape the tool
 
 **Compliance with planning.md**:
 - ✅ Returns 1-2 outfit ideas (2-4 sentences)
 - ✅ Empty wardrobe: general styling advice (not error)
 - ✅ Non-empty wardrobe: specific wardrobe pairings
 - ✅ Low temperature (0.3) for consistent advice
-- ✅ Non-empty string always returned
+- ✅ Non-empty string returned on success; `ToolError` raised on failure
 
 **Status**: ✅ **Fully tested and ready for agent.py integration**
 
@@ -551,7 +571,7 @@ From `planning.md`:
 - Mentions item name, price, and platform once each
 - Feels casual and authentic (like Instagram/TikTok post)
 - Uses higher LLM temperature for variety
-- Returns fallback string if outfit is empty (doesn't crash)
+- Raises `ToolError` if the outfit is empty or the LLM call fails (an empty LLM completion is non-fatal and returns a fallback caption)
 
 ### Test Cases & Results
 
@@ -597,27 +617,27 @@ fit_card = create_fit_card(outfit, item)
 
 ---
 
-#### Test 3: Empty Outfit Handling
-**Objective**: Verify graceful handling when outfit string is empty or missing
+#### Test 3: Empty Outfit Handling (updated)
+**Objective**: Verify the tool rejects an empty/missing outfit by raising `ToolError`
 
 **Test Code** (simulated):
 ```python
-fit_card = create_fit_card("", results[0])
+create_fit_card("", results[0])   # raises ToolError
 ```
 
-**Expected Behavior**: Should return error message string, not crash
+**Expected Behavior**: Should raise `ToolError` (caught by the agent loop), not crash with an uncaught exception
 
 **Implementation Verification**:
 ```python
 if not outfit or outfit.strip() == "":
-    return "Could not create a fit card because the outfit suggestion was missing."
+    raise ToolError("Cannot create a fit card: the outfit suggestion was missing.")
 ```
 
 **Result**: ✅ PASS
-- Code includes guard clause for empty outfit
-- Returns descriptive error message (doesn't raise exception)
+- Guard clause raises `ToolError` for empty/whitespace outfit
+- The agent loop catches it and sets `session["error"] = "Could not create a fit card."`
 
-**Conclusion**: Error handling implemented as specified.
+**Conclusion**: Empty-outfit handling implemented via `ToolError` as specified.
 
 ---
 
@@ -658,7 +678,7 @@ if not outfit or outfit.strip() == "":
 1. **Data Loading**: `load_listings()` imports correctly from `utils.data_loader`
 2. **Null Safety**: All `None` parameters handled without crashes
 3. **Keyword Scoring**: Bag-of-words approach (not exact phrase matching)
-4. **Error Handling**: Returns empty lists/error messages instead of exceptions
+4. **Error Handling**: `search_listings` returns an empty list on no match; `suggest_outfit`/`create_fit_card` raise `ToolError` on failure (an empty `create_fit_card` completion returns a fallback caption)
 5. **LLM Integration**: Groq API works correctly with appropriate temperatures
 6. **Wardrobe Handling**: Empty wardrobe treated as valid input (general advice given)
 7. **Output Format**: All tools return expected data types (list, str, str)
@@ -695,29 +715,29 @@ All three tools are **ready for integration into agent.py**. The planning loop c
 
 ### Additional Test Cases & Results (June 14, 2026)
 
-#### Test 1: Empty Outfit String Guard
-**Objective**: Verify that tool returns error message (not exception) when outfit is empty
+#### Test 1: Empty Outfit String Guard (updated)
+**Objective**: Verify the tool raises `ToolError` when the outfit is empty/whitespace
 
 **Test Code**:
 ```python
-result_empty = create_fit_card("", test_item)
-result_whitespace = create_fit_card("   ", test_item)
+with pytest.raises(ToolError):
+    create_fit_card("", test_item)
+with pytest.raises(ToolError):
+    create_fit_card("   ", test_item)
 ```
 
 **Result**: ✅ PASS
-- Empty string `""` → Returns: "Could not create a fit card because the outfit suggestion was missing."
-- Whitespace string `"   "` → Returns: "Could not create a fit card because the outfit suggestion was missing."
-- Both return 70 character error message
-- No exceptions raised
-- Clear, descriptive error message
+- Empty string `""` → raises `ToolError`
+- Whitespace string `"   "` → raises `ToolError`
+- No non-`ToolError` exception escapes
 
 **Code Verification**:
 ```python
 if not outfit or outfit.strip() == "":
-    return "Could not create a fit card because the outfit suggestion was missing."
+    raise ToolError("Cannot create a fit card: the outfit suggestion was missing.")
 ```
 
-**Conclusion**: Empty outfit guard works correctly as specified.
+**Conclusion**: Empty-outfit guard raises `ToolError` as specified.
 
 ---
 
@@ -822,43 +842,43 @@ Write a casual, authentic 2-4 sentence caption that:
 
 ---
 
-#### Test 5: Exception Handling and Fallback Strings
-**Objective**: Verify tool has multiple fallback messages and never raises unhandled exceptions
+#### Test 5: Exception Handling and Failure Signaling (updated)
+**Objective**: Verify hard failures raise `ToolError`, and only an empty LLM completion is a non-fatal fallback
 
 **Code Inspection**:
 ```python
-# Guard 1: Empty outfit
+# Guard 1: Empty outfit -> raise
 if not outfit or outfit.strip() == "":
-    return "Could not create a fit card because the outfit suggestion was missing."
+    raise ToolError("Cannot create a fit card: the outfit suggestion was missing.")
 
-# Guard 2: API key missing
+# Guard 2: client init failure -> raise
 try:
     client = _get_groq_client()
-except ValueError as e:
-    return f"Error: {str(e)}"
+except Exception as e:
+    raise ToolError("Could not initialize the Groq client.") from e
 
-# Guard 3: LLM call failure
+# Guard 3: LLM call
 try:
     response = client.chat.completions.create(...)
     result = response.choices[0].message.content.strip()
     if not result:
+        # Empty completion is NON-FATAL: return a generic fallback caption.
         return "Just snagged this piece — can't wait to style it with my wardrobe!"
     return result
 except Exception as e:
-    return f"Could not generate a fit card due to an error: {str(e)}"
+    raise ToolError("The fit-card LLM call failed.") from e
 ```
 
 **Result**: ✅ PASS
-- Exception handling found: try/except blocks ✓
-- Fallback messages found: 4 distinct messages ✓
+- Three failure modes raise `ToolError`; one (empty completion) returns a fallback string
 
-**Fallback Messages Verified**:
-1. **Empty outfit**: "Could not create a fit card because the outfit suggestion was missing."
-2. **LLM returns empty**: "Just snagged this piece — can't wait to style it with my wardrobe!"
-3. **API error**: "Could not generate a fit card due to an error: {error}"
-4. **Missing API key**: "Error: GROQ_API_KEY not set. Add it to a .env file in the project root."
+**Failure behavior verified**:
+1. **Empty/missing outfit** → raises `ToolError`
+2. **Client init / missing API key** → raises `ToolError`
+3. **LLM API call failure** → raises `ToolError`
+4. **LLM returns empty completion** → non-fatal, returns: "Just snagged this piece — can't wait to style it with my wardrobe!"
 
-**Conclusion**: Comprehensive exception handling with 4 fallback messages. Never raises unhandled exceptions.
+**Conclusion**: Hard failures are signaled via `ToolError` (caught by the agent loop); an empty completion is the only non-fatal fallback.
 
 ---
 
@@ -975,8 +995,8 @@ response = client.chat.completions.create(
 - ✅ Feels casual and authentic (not product description)
 - ✅ Uses emojis sparingly (1-2 max)
 - ✅ High temperature (0.8) for variety
-- ✅ Returns fallback string on empty outfit
-- ✅ Returns error message on LLM failure
+- ✅ Raises `ToolError` on empty outfit
+- ✅ Raises `ToolError` on LLM failure (empty completion → non-fatal fallback caption)
 - ✅ Different output each run
 
 **Status**: ✅ **Fully tested and ready for agent.py integration**
@@ -1019,3 +1039,88 @@ All three tools have been comprehensively tested and are ready for integration i
 **Final testing completed**: June 14, 2026  
 **Tester**: AI Development Team  
 **Approval**: ✅ Ready for Milestone 4 (Planning Loop Implementation)
+
+---
+
+## Integration Testing (agent.py + app.py)
+
+### Date: June 14, 2026 (Milestone 4)
+
+This section covers the `run_agent()` planning loop and the Gradio `handle_query()`
+handler, plus the post-refactor `ToolError` flow and the query-parsing fix.
+
+### Automated suite (pytest)
+
+`pytest.ini` scopes collection to `tests/` so the canonical suite runs cleanly.
+(The top-level `test_*.py` files are manual, print-style scripts that reassign
+`sys.stdout` and make live LLM calls; they are run by hand, not under pytest.)
+
+```
+.venv/Scripts/python.exe -m pytest -q
+28 passed
+```
+
+| File | Coverage |
+|------|----------|
+| `tests/test_tools.py` | 5 search_listings tests, suggest_outfit/create_fit_card success + `ToolError` failures, and the divergent empty-completion behavior (suggest raises, create falls back) |
+| `tests/test_agent.py` | `run_agent` happy path, no-results early return, `suggest_outfit`/`create_fit_card` failure branches, empty-wardrobe success, empty-description guard, and query parsing |
+| `tests/test_app.py` | `handle_query` empty-query guard, error→panel-1 mapping, success panel formatting, wardrobe-radio selection |
+
+The LLM-backed tools are patched (`unittest.mock`) in the agent/app tests, so the
+loop and handler are exercised deterministically without live Groq calls.
+
+### run_agent — planning loop (planning.md Milestone 4)
+
+| Scenario | Expected | Result |
+|----------|----------|--------|
+| Happy path | all fields set, `error` is None, both tools called once | ✅ PASS |
+| No results | `error = "No listings found…"`, `suggest_outfit`/`create_fit_card` NOT called | ✅ PASS |
+| `suggest_outfit` raises `ToolError` | `error = "Could not generate an outfit suggestion. Please try again."`, `create_fit_card` NOT called | ✅ PASS |
+| `create_fit_card` raises `ToolError` | `error = "Could not create a fit card."`, `outfit_suggestion` retained | ✅ PASS |
+| Empty wardrobe | NOT an error — completes successfully | ✅ PASS |
+| Empty description (e.g. `"$30"`) | `error = "Please describe what you're looking for…"` | ✅ PASS |
+
+### Query parsing (size-regex fix)
+
+The size parser was tightened to match only size-shaped tokens so it no longer
+swallows trailing prose.
+
+| Query | Parsed size | Result |
+|-------|-------------|--------|
+| `"vintage tee size M cotton crewneck"` | `"M"` (not `"M cotton crewneck"`) | ✅ PASS |
+| `"baggy jeans size W30 L30"` | `"W30 L30"` | ✅ PASS |
+| `"flowy midi skirt under $40"` | max_price `40.0` | ✅ PASS |
+
+### handle_query (Gradio handler)
+
+| Scenario | Expected | Result |
+|----------|----------|--------|
+| Empty query | warning in panel 1, panels 2 & 3 empty | ✅ PASS |
+| `session["error"]` set | error shown in panel 1, panels 2 & 3 empty | ✅ PASS |
+| Success | panel 1 = formatted listing (title/price/platform), panel 2 = outfit, panel 3 = fit card | ✅ PASS |
+| Wardrobe radio | "Example wardrobe" → `get_example_wardrobe()`; "Empty wardrobe (new user)" → `get_empty_wardrobe()` | ✅ PASS |
+
+### End-to-end (live Groq) — manual verification
+
+Ran all five `EXAMPLE_QUERIES` plus a no-results query through `handle_query`
+with a live `GROQ_API_KEY` and the example wardrobe:
+
+- **Happy path** (`vintage graphic tee under $30`, `90s track jacket in size M`,
+  `flowy midi skirt under $40`, `black combat boots size 8`): each ran the full
+  `search → suggest_outfit → create_fit_card` chain and populated all three
+  panels. Fit cards correctly mentioned item name, price, and platform; outfit
+  suggestions referenced wardrobe pieces. Output varies run-to-run (temperature 0.8).
+- **No results** (`designer ballgown size XXS under $5`, `designer ballgown under $5`):
+  panel 1 showed "No listings found matching your criteria. Try adjusting your
+  search."; panels 2 & 3 empty; downstream tools not called.
+
+### Status
+
+✅ **Planning loop, handler, parsing, and the `ToolError` flow are fully tested.**
+Automated: 28/28 pytest cases pass. Manual: live end-to-end happy-path and
+no-results flows verified.
+
+---
+
+**Integration testing completed**: June 14, 2026  
+**Approval**: ✅ Milestone 4 (Planning Loop + Gradio Interface) verified

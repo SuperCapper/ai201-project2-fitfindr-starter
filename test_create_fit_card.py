@@ -32,31 +32,29 @@ test_outfit = suggest_outfit(test_item, wardrobe)
 print(f"\n✓ Generated outfit suggestion: {len(test_outfit)} chars")
 print(f"  Preview: \"{test_outfit[:100]}...\"")
 
+from tools import ToolError
+
 # Test 1: Empty outfit string guard
 print("\n[Test 1] Guard against empty outfit string")
-print("  Testing with empty string...")
+print("  Testing with empty string (expecting ToolError)...")
 
 try:
-    result_empty = create_fit_card("", test_item)
-    print(f"✓ Returned non-empty string: {len(result_empty)} chars")
-    print(f"  Output: \"{result_empty}\"")
-    
-    # Check if it's the expected error message
-    if "could not create a fit card" in result_empty.lower() or "missing" in result_empty.lower():
-        print(f"  ✓ Returns clear error message (not empty, not exception)")
-    else:
-        print(f"  ⚠ Warning: May not be the expected error message")
+    create_fit_card("", test_item)
+    print(f"✗ FAILED: Did not raise ToolError for an empty outfit")
+except ToolError as e:
+    print(f"  ✓ Raised ToolError as expected: {e}")
 except Exception as e:
-    print(f"✗ FAILED: Raised exception instead of returning error string: {e}")
+    print(f"✗ FAILED: Raised {type(e).__name__} instead of ToolError: {e}")
 
 # Test with whitespace-only string
-print("\n  Testing with whitespace-only string...")
+print("\n  Testing with whitespace-only string (expecting ToolError)...")
 try:
-    result_whitespace = create_fit_card("   ", test_item)
-    print(f"✓ Returned non-empty string: {len(result_whitespace)} chars")
-    print(f"  Output: \"{result_whitespace}\"")
+    create_fit_card("   ", test_item)
+    print(f"✗ FAILED: Did not raise ToolError for a whitespace-only outfit")
+except ToolError as e:
+    print(f"  ✓ Raised ToolError as expected: {e}")
 except Exception as e:
-    print(f"✗ FAILED: {e}")
+    print(f"✗ FAILED: Raised {type(e).__name__} instead of ToolError: {e}")
 
 # Test 2: Temperature verification (multiple runs for variation)
 print("\n[Test 2] Temperature variation - calling create_fit_card 5 times with same inputs")
@@ -159,12 +157,13 @@ try:
 except Exception as e:
     print(f"⚠ Could not inspect code: {e}")
 
-# List expected fallback messages
-print("\n  Expected fallback messages:")
-print("    1. Empty outfit: 'Could not create a fit card because the outfit suggestion was missing.'")
-print("    2. LLM returns empty: 'Just snagged this piece — can't wait to style it with my wardrobe!'")
-print("    3. API error: 'Could not generate a fit card due to an error: {error}'")
-print("    4. Missing API key: 'Error: GROQ_API_KEY not set...'")
+# Failure behavior: hard failures raise ToolError; only an empty LLM
+# completion is non-fatal and returns a fallback caption.
+print("\n  Failure behavior:")
+print("    1. Empty/missing outfit  -> raises ToolError")
+print("    2. Client init fails     -> raises ToolError")
+print("    3. LLM API call fails    -> raises ToolError")
+print("    4. LLM returns empty     -> returns fallback: 'Just snagged this piece — can't wait to style it with my wardrobe!'")
 
 # Test 6: Output format verification
 print("\n[Test 6] Output format - casual, authentic, 2-4 sentences")
