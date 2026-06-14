@@ -129,7 +129,7 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
     """
     try:
         client = _get_groq_client()
-    except ValueError as e:
+    except (ValueError, Exception) as e:
         return f"Error: {str(e)}"
 
     # Check if wardrobe is empty
@@ -201,7 +201,7 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     try:
         client = _get_groq_client()
-    except ValueError as e:
+    except (ValueError, Exception) as e:
         return f"Error: {str(e)}"
 
     # Build the prompt
