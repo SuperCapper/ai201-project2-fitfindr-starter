@@ -137,16 +137,22 @@ Write out what a full user interaction looks like from start to finish — tool 
 **What FitFindr needs to do (2–3 sentences)**
 FitFindr helps a user find a secondhand item based on a natural language query (e.g., "vintage graphic tee under $30"). It first searches the mock listings dataset using search_listings to return matching items. If a match is found, it uses suggest_outfit to generate styling ideas by combining the found item with the user's existing wardrobe, then produces a shareable caption via create_fit_card. If any tool fails (e.g., no results, empty wardrobe, or missing data), the agent returns a clear error message and stops early — it does not proceed with subsequent tools.
 
-**Example user query:** "I'm looking for a vintage graphic tee under $30. I mostly wear baggy jeans and chunky sneakers. What's out there and how would I style it?"
+**Example user query:**
+"I'm looking for a vintage graphic tee under $30. I mostly wear baggy jeans and chunky sneakers. What's out there and how would I style it?"
 
-**Step 1:**
-<!-- What does the agent do first? Which tool is called? With what input? -->
+**Step 1: Parse the query**
+The agent extracts description = "vintage graphic tee", max_price = 30.0, and size = None (no size specified). No size filter is applied.
 
-**Step 2:**
-<!-- What happens next? What was returned from step 1? What tool is called now? -->
+**Step 2: Call search_listings(description="vintage graphic tee", size=None, max_price=30.0)**
+The tool loads all listings, filters by price ≤ 30, and scores each by keyword overlap with "vintage", "graphic", "tee". It returns a list of matching listings sorted by relevance (e.g., items like lst_002, lst_006, lst_033). The top result is selected (e.g., lst_006 – "Graphic Tee — 2003 Tour Bootleg Style", price $24, size L).
 
-**Step 3:**
-<!-- Continue until the full interaction is complete -->
+**Step 3: Call suggest_outfit(new_item=lst_006, wardrobe=user_wardrobe)**
+The user's wardrobe contains baggy jeans and chunky sneakers (from the example wardrobe). The tool calls the LLM with a prompt asking for 1–2 outfit ideas using the new tee, the baggy jeans, and the sneakers. It returns a string like:
+"Pair the vintage tour tee with your baggy straight-leg jeans and chunky white sneakers. Add a black denim jacket for layering — perfect for a casual day out."
+
+**Step 4: Call create_fit_card(outfit=outfit_string, new_item=lst_006)**
+The tool prompts the LLM to generate a short, shareable caption. Example output:
+*"Just snagged this faded tour tee on Depop for $24 — the perfect grunge layer. Wearing it with my go-to baggy jeans and chunky sneakers. 💥 #thriftfind #vintagefashion"*
 
 **Final output to user:**
-<!-- What does the user actually see at the end? -->
+The agent returns the found item (lst_006), the outfit suggestion, and the shareable fit card caption to display in the UI.
