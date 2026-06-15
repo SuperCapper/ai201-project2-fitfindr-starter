@@ -16,6 +16,10 @@ session_dump.json
 # Local-only demo helper (failure-mode demo video); not part of the submission
 demo_app_failure.py
 
+# Generated narration audio for the demo video (submitted separately)
+narration/
+*.wav
+
 # Jupyter
 .ipynb_checkpoints/
 
