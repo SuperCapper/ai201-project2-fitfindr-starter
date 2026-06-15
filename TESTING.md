@@ -661,7 +661,7 @@ if not outfit or outfit.strip() == "":
 
 > **Note:** This was an interim tally of the **manual, exploratory** tool runs
 > taken partway through development. It is kept for history. The authoritative,
-> automated count is **28 passing `pytest` cases** — see
+> automated count is **31 passing `pytest` cases** — see
 > [Final Testing Summary](#final-testing-summary--authoritative-automated-suite).
 
 ### All Tools Status (manual exploration)
@@ -675,7 +675,7 @@ if not outfit or outfit.strip() == "":
 ### Total Manual Coverage (exploratory)
 
 - **Manual exploratory runs at this checkpoint**: 22
-- **Authoritative automated count**: 28 (see Final Testing Summary)
+- **Authoritative automated count**: 31 (see Final Testing Summary)
 - **Failed**: 0
 
 ### Key Implementation Details Verified
@@ -1017,19 +1017,19 @@ response = client.chat.completions.create(
 
 ### Automated Test Coverage (pytest)
 
-Command: `.venv/Scripts/python.exe -m pytest -q` → **28 passed**
+Command: `.venv/Scripts/python.exe -m pytest -q` → **31 passed**
 
 | File | Area | Tests |
 |------|------|-------|
 | `tests/test_tools.py` | search_listings | 5 |
 | `tests/test_tools.py` | suggest_outfit (success + `ToolError` + empty-completion) | 5 |
 | `tests/test_tools.py` | create_fit_card (success + `ToolError` + empty-completion fallback) | 5 |
-| `tests/test_agent.py` | run_agent planning loop + query parsing | 9 |
+| `tests/test_agent.py` | run_agent planning loop + query parsing (incl. no-results suggestion branches) | 12 |
 | `tests/test_app.py` | handle_query (Gradio handler) | 4 |
-| **Total** | | **28** |
+| **Total** | | **31** |
 
-- **Total automated cases**: 28
-- **Passed**: 28 (100%)
+- **Total automated cases**: 31
+- **Passed**: 31 (100%)
 - **Failed**: 0
 
 ### Test Files
@@ -1050,7 +1050,7 @@ Command: `.venv/Scripts/python.exe -m pytest -q` → **28 passed**
 ✅ **search_listings**: 5/5 automated
 ✅ **suggest_outfit**: 5/5 automated
 ✅ **create_fit_card**: 5/5 automated
-✅ **run_agent**: 9/9 automated
+✅ **run_agent**: 12/12 automated
 ✅ **handle_query**: 4/4 automated
 
 All tools and the planning loop / Gradio handler are covered and green.
@@ -1059,7 +1059,7 @@ All tools and the planning loop / Gradio handler are covered and green.
 
 **Final testing completed**: June 14, 2026  
 **Tester**: AI Development Team  
-**Approval**: ✅ Milestone 4 (Planning Loop + Gradio Interface) verified — 28/28 automated tests passing
+**Approval**: ✅ Milestone 4 (Planning Loop + Gradio Interface) verified — 31/31 automated tests passing
 
 ---
 
@@ -1078,7 +1078,7 @@ handler, plus the post-refactor `ToolError` flow and the query-parsing fix.
 
 ```
 .venv/Scripts/python.exe -m pytest -q
-28 passed
+31 passed
 ```
 
 | File | Coverage |
@@ -1192,7 +1192,7 @@ Note: it is a top-level script and is **not** collected by pytest (`testpaths = 
 ### Status
 
 ✅ **Planning loop, handler, parsing, and the `ToolError` flow are fully tested.**
-Automated: 28/28 pytest cases pass. Manual: live end-to-end happy-path and
+Automated: 31/31 pytest cases pass. Manual: live end-to-end happy-path and
 no-results flows verified, plus `verify_state.py` confirms state identity on the
 happy path and the no-call early return on the error path.
 
