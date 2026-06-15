@@ -59,3 +59,12 @@ wardrobe = get_example_wardrobe()
 3. Build and test each tool individually before connecting them through your planning loop.
 
 Your implementation files go in this same directory. There's no required file structure for your agent code — organize it however makes sense for your design.
+
+## Demo Video
+
+A screen recording (`Screen Recording 2026-06-14 204551.mp4`) is **submitted separately** — it is not committed to this repository (large binary). It demonstrates:
+
+- The full FitFindr Gradio app running end to end (search → outfit suggestion → fit card).
+- A **failure mode**: when the outfit step yields nothing, `create_fit_card` raises a `ToolError`, the planning loop catches it, and the app shows a clear error (`⚠️ Could not create a fit card.`) instead of crashing.
+
+To run the app yourself: `python app.py`, then open the printed local URL (e.g. http://127.0.0.1:7860).
