@@ -214,20 +214,20 @@ Data flow:
 
 **Milestone 3 — Individual tool implementations:**
 
-I'll use Amazon Q Developer to implement each tool individually. For each tool:
+I'll use Claude (Anthropic's coding assistant) to implement each tool individually. For each tool:
 - Input: The complete tool specification from the Tools section (what it does, input parameters, return value, failure modes)
 - Expected output: A working function in `tools.py` that matches the spec exactly
 - Verification: Write unit tests for each tool using pytest, testing both success cases and all documented failure modes
 
-Tool 1 (search_listings): Give Q the Tool 1 spec, the `listings.json` schema, and the `load_listings()` function signature. Test with 3 queries: (1) exact match, (2) partial match with filters, (3) no matches.
+Tool 1 (search_listings): Give Claude the Tool 1 spec, the `listings.json` schema, and the `load_listings()` function signature. Test with 3 queries: (1) exact match, (2) partial match with filters, (3) no matches.
 
-Tool 2 (suggest_outfit): Give Q the Tool 2 spec, the wardrobe schema, and example prompts for LLM calls. Test with: (1) full wardrobe, (2) empty wardrobe, (3) mock API error.
+Tool 2 (suggest_outfit): Give Claude the Tool 2 spec, the wardrobe schema, and example prompts for LLM calls. Test with: (1) full wardrobe, (2) empty wardrobe, (3) mock API error.
 
-Tool 3 (create_fit_card): Give Q the Tool 3 spec and example output format. Test with: (1) valid outfit input, (2) empty outfit string, (3) mock API error with fallback.
+Tool 3 (create_fit_card): Give Claude the Tool 3 spec and example output format. Test with: (1) valid outfit input, (2) empty outfit string, (3) mock API error with fallback.
 
 **Milestone 4 — Planning loop and state management:**
 
-I'll use Amazon Q Developer to implement the planning loop in `agent.py`. 
+I'll use Claude (Anthropic's coding assistant) to implement the planning loop in `agent.py`. 
 - Input: The Planning Loop, State Management, and Error Handling sections, plus all three tool signatures
 - Expected output: A `run_agent(query, wardrobe)` function that returns a session dict
 - Verification: Write integration tests that run the full agent with various inputs:

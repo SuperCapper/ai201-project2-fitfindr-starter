@@ -100,6 +100,28 @@ Each tool receives only the fields it needs (not the whole session), which keeps
 
 ---
 
+## Error Handling
+
+Each tool has a defined failure mode, and the planning loop ([`agent.py`](agent.py)) decides what the user sees:
+
+| Tool | Failure mode | Agent response |
+|------|--------------|----------------|
+| `search_listings` | No listings match the query | Returns `[]` (never raises). The loop sets `session["error"]` to a context-specific message — e.g. `"No listings found. Try a different size (e.g., remove the 'XXS' filter)."` — and returns early without calling the other tools. |
+| `suggest_outfit` | Client init fails, LLM call fails, or empty completion | Raises `ToolError`. The loop catches it, sets `session["error"] = "Could not generate an outfit suggestion. Please try again."`, and returns early (never calls `create_fit_card`). An **empty wardrobe is not a failure** — the tool returns general styling advice. |
+| `create_fit_card` | Missing/empty outfit, client init fails, or LLM call fails | Raises `ToolError`. The loop catches it and sets `session["error"] = "Could not create a fit card."`. An empty LLM completion is non-fatal — the tool returns a fallback caption. |
+
+**Concrete example from testing.** Feeding an empty outfit into `create_fit_card` raises `ToolError`, which the loop converts into a user-facing error instead of crashing:
+
+```python
+>>> from tools import create_fit_card
+>>> create_fit_card("", item)
+ToolError: Cannot create a fit card: the outfit suggestion was missing.
+```
+
+In the running app this surfaces as `⚠️ Could not create a fit card.` in the first panel (covered by `tests/test_tools.py::test_create_fit_card_empty_outfit` and shown in the demo video). The "downstream tools are never called when search is empty" early-return is proven by `verify_state.py` and `tests/test_agent.py::test_run_agent_no_results`, which use mock spies to assert a call count of 0.
+
+---
+
 ## The Mock Listings Dataset
 
 `data/listings.json` contains 40 mock secondhand listings across categories (tops, bottoms, outerwear, shoes, accessories) and styles (vintage, y2k, grunge, cottagecore, streetwear, and more).
@@ -141,6 +163,28 @@ A screen recording (`Screen Recording 2026-06-14 204551.mp4`) is **submitted sep
 
 - The full FitFindr Gradio app running end to end (search → outfit suggestion → fit card).
 - A **failure mode**: when the outfit step yields nothing, `create_fit_card` raises a `ToolError`, the planning loop catches it, and the app shows a clear error (`⚠️ Could not create a fit card.`) instead of crashing.
+
+---
+
+## Spec Reflection
+
+**Where the spec helped.** Writing `planning.md` first — the tool I/O contracts, the numbered planning loop, and the Error Handling table — made the implementation largely transcription. Defining each tool's inputs/outputs and the session keys up front kept the tools decoupled and made the loop's control flow obvious before any code was written.
+
+**Where the implementation diverged (and why).** The original spec had the tools **return error-message strings** on failure (and the Error Handling table said "catch exception"). That forced the loop to detect failures by substring-matching prose, which was brittle and missed cases — a `create_fit_card` client-init error slipped through as a "successful" caption. I diverged to having `suggest_outfit`/`create_fit_card` **raise a `ToolError`** that the loop catches: structural, exhaustive failure detection. `search_listings` still returns `[]` (an empty result is normal, not an error). `planning.md` and `TESTING.md` were updated to match the new contract.
+
+---
+
+## AI Usage Transparency
+
+I used **Claude** (Anthropic's coding assistant) as a pair-programmer. Specific instances:
+
+1. **Implementing the planning loop.** I gave Claude the Planning Loop and State Management sections of `planning.md` and asked it to implement `run_agent()`. *Reviewed / overrode:* its first version detected tool failures by substring-matching returned error strings (`"Error:" in result`). I flagged this as fragile — it silently passed a `create_fit_card` client-init failure downstream — and directed a refactor so the tools raise `ToolError` and the loop catches it, then had it reconcile the tests, `planning.md`, and `TESTING.md` to the new contract.
+
+2. **Fixing the query parser.** Claude's initial size-extraction regex over-captured trailing words (`"size M cotton tee"` → `"M cotton tee"`), which then failed the size filter. *Revised:* I had it restrict the pattern to size-shaped tokens so it captures `"M"` (and `"W30 L30"`) without swallowing surrounding prose, and add tests for those cases.
+
+3. **Designing the no-results message.** I directed Claude to make the no-results error context-specific (suggest dropping the size filter, raising the price, or broadening keywords). *Reviewed / overrode:* I required keeping the stable `"No listings found"` prefix and the raise-based design — declining a suggested alternative to revert `create_fit_card` to returning a string — and had it propagate the change through the tests and docs.
+
+In each case I reviewed the generated code against `planning.md`, ran it (plus the `pytest` suite and `verify_state.py`) to confirm behavior, and revised the parts that didn't match the spec.
 
 ---
 
