@@ -41,7 +41,7 @@ def test_handle_query_empty_guard():
 @patch("app.run_agent")
 def test_handle_query_error_path(mock_run_agent):
     mock_run_agent.return_value = {
-        "error": "No listings found matching your criteria. Try adjusting your search.",
+        "error": "No listings found. Try a different size (e.g., remove the 'XXS' filter).",
         "selected_item": None,
         "outfit_suggestion": None,
         "fit_card": None,

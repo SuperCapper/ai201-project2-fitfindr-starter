@@ -115,9 +115,17 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     )
     session["search_results"] = search_results
     
-    # If no results, set error and return early
+    # If no results, build a specific, actionable suggestion and return early.
+    # Prefer the most constraining filter first (size, then price), falling
+    # back to a keyword hint when no filters were applied.
     if not search_results:
-        session["error"] = "No listings found matching your criteria. Try adjusting your search."
+        if size:
+            tip = f"try a different size (e.g., remove the '{size}' filter)"
+        elif max_price is not None:
+            tip = f"try a higher price limit (current: ${max_price:g})"
+        else:
+            tip = "try different or broader keywords"
+        session["error"] = f"No listings found. {tip[0].upper()}{tip[1:]}."
         return session
     
     # Step 4: Select the top result

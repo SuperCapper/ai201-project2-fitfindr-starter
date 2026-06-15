@@ -26,7 +26,7 @@ Searches the mock listings dataset (from `listings.json`) for items that match a
 A list of matching listing dicts. Each dict contains exactly the fields from `listings.json`: `id`, `title`, `description`, `category`, `style_tags`, `size`, `condition`, `price`, `colors`, `brand`, `platform`. The list is sorted by relevance score (highest first). Returns an empty list if no matches.
 
 **What happens if it fails or returns nothing:**
-If no matches are found, the planning loop checks for an empty list, sets `session["error"]` to `"No listings found matching your criteria. Try adjusting your search."`, and returns early without calling `suggest_outfit` or `create_fit_card`.
+If no matches are found, the planning loop checks for an empty list and sets `session["error"]` to a `"No listings found. …"` message that includes a context-specific suggestion (drop the size filter, raise the price limit, or broaden keywords — based on which filters were applied), then returns early without calling `suggest_outfit` or `create_fit_card`.
 
 ---
 
@@ -80,7 +80,7 @@ The planning loop follows a strict sequence of three steps, with conditional bra
    - If parsing fails (e.g., no description), set `session["error"] = "Please describe what you're looking for (e.g., 'vintage tee under $30')."` and return.
 
 2. **Call `search_listings(description, size, max_price)`**.  
-   - If the returned list is empty → set `session["error"] = "No listings found matching your criteria. Try adjusting your search."` → **return** (skip further tools).  
+   - If the returned list is empty → set `session["error"]` to a `"No listings found. …"` message with a context-specific suggestion (size / price / keywords) → **return** (skip further tools).  
    - If the list has at least one item → select `session["selected_item"] = results[0]` (the top result).  
 
 3. **Call `suggest_outfit(selected_item, wardrobe)`**.  
@@ -129,7 +129,7 @@ Tools signal failure structurally by raising `ToolError` (defined in `tools.py`)
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| search_listings | No results match the query | Set `session["error"] = "No listings found matching your criteria. Try adjusting your search."` and return early (do not call subsequent tools). |
+| search_listings | No results match the query | Set `session["error"]` to a `"No listings found. …"` message with a context-specific suggestion (e.g. "Try a different size (e.g., remove the 'XXS' filter).", "Try a higher price limit…", or "Try different or broader keywords.") and return early (do not call subsequent tools). |
 | suggest_outfit | Wardrobe is empty | The tool calls the LLM with a prompt that asks for general styling advice instead of specific wardrobe pairings. The agent does **not** treat this as an error — it returns a valid styling string and continues to `create_fit_card`. |
 | suggest_outfit | Client init fails, LLM call fails (e.g., network error, invalid API key), or the LLM returns an empty completion | The tool raises `ToolError`. The loop catches it, sets `session["error"] = "Could not generate an outfit suggestion. Please try again."`, and returns early. |
 | create_fit_card | `outfit` input is missing/empty, client init fails, or the LLM call fails | The tool raises `ToolError`. The loop catches it, sets `session["error"] = "Could not create a fit card."`, and returns early. |

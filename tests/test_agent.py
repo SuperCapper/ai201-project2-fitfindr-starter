@@ -50,6 +50,37 @@ def test_run_agent_no_results(mock_suggest, mock_create):
 
 
 @patch("agent.create_fit_card")
+@patch("agent.suggest_outfit")
+def test_run_agent_no_results_suggests_size_adjustment(mock_suggest, mock_create):
+    # When a size filter is set, the no-results message names that size.
+    session = agent.run_agent("designer ballgown size XXS under $5", {"items": []})
+    assert session["error"].startswith("No listings found")
+    assert "XXS" in session["error"]
+    mock_suggest.assert_not_called()
+    mock_create.assert_not_called()
+
+
+@patch("agent.create_fit_card")
+@patch("agent.suggest_outfit")
+def test_run_agent_no_results_suggests_price_adjustment(mock_suggest, mock_create):
+    # Price filter, no size -> suggests raising the price limit.
+    session = agent.run_agent("designer ballgown under $1", {"items": []})
+    assert session["error"].startswith("No listings found")
+    assert "price" in session["error"].lower()
+    mock_suggest.assert_not_called()
+
+
+@patch("agent.create_fit_card")
+@patch("agent.suggest_outfit")
+def test_run_agent_no_results_suggests_keywords(mock_suggest, mock_create):
+    # No size, no price -> falls back to a keyword hint.
+    session = agent.run_agent("zzz nonexistent item", {"items": []})
+    assert session["error"].startswith("No listings found")
+    assert "keyword" in session["error"].lower()
+    mock_suggest.assert_not_called()
+
+
+@patch("agent.create_fit_card")
 @patch("agent.suggest_outfit", side_effect=ToolError("LLM down"))
 def test_run_agent_suggest_outfit_failure(mock_suggest, mock_create):
     from utils.data_loader import get_example_wardrobe

@@ -118,10 +118,12 @@ def verify_error_path():
         agent.suggest_outfit = orig_suggest
         agent.create_fit_card = orig_create
 
-    expected = "No listings found matching your criteria. Try adjusting your search."
+    # The no-results message is dynamic (it suggests an adjustment based on the
+    # filters used), so check the stable prefix plus the size-specific hint.
+    err = session["error"] or ""
 
-    # 1. Error message matches the spec
-    if session["error"] == expected:
+    # 1. Error message is the no-results error with a relevant suggestion
+    if err.startswith("No listings found") and "XXS" in err:
         print(f"✅ ERROR set as expected: {session['error']}")
     else:
         print(f"⚠️ WARNING: unexpected error value: {session['error']!r}")

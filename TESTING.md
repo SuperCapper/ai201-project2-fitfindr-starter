@@ -1132,8 +1132,9 @@ with a live `GROQ_API_KEY` and the example wardrobe:
   panels. Fit cards correctly mentioned item name, price, and platform; outfit
   suggestions referenced wardrobe pieces. Output varies run-to-run (temperature 0.8).
 - **No results** (`designer ballgown size XXS under $5`, `designer ballgown under $5`):
-  panel 1 showed "No listings found matching your criteria. Try adjusting your
-  search."; panels 2 & 3 empty; downstream tools not called.
+  panel 1 showed a "No listings found. …" message with a context-specific
+  suggestion (e.g. "Try a different size (e.g., remove the 'XXS' filter).");
+  panels 2 & 3 empty; downstream tools not called.
 
 ### State-flow verification (`verify_state.py`)
 
@@ -1162,7 +1163,7 @@ merely producing empty output but are **never called**.
 
 | Check | Result |
 |-------|--------|
-| `session["error"]` == "No listings found matching your criteria. Try adjusting your search." | ✅ PASS |
+| `session["error"]` starts with "No listings found" and names the active filter (here: "…Try a different size (e.g., remove the 'XXS' filter).") | ✅ PASS |
 | `suggest_outfit` / `create_fit_card` call count == 0 (early return) | ✅ PASS |
 | `selected_item`, `outfit_suggestion`, `fit_card` all `None` | ✅ PASS |
 
@@ -1178,7 +1179,7 @@ LLM tools were skipped from the output fields being unset:
 
 | Field | Expected | Result |
 |-------|----------|--------|
-| `session["error"]` | "No listings found matching your criteria. Try adjusting your search." | ✅ |
+| `session["error"]` | a "No listings found. …" message with a context-specific suggestion | ✅ |
 | `session["search_results"]` | `[]` | ✅ |
 | `session["selected_item"]` / `outfit_suggestion` / `fit_card` | all `None` | ✅ |
 
